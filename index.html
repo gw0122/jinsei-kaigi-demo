@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>人生会議（デモ v2）</title>
+<title>人生会議（デモ v3）</title>
 <style>
   body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic',sans-serif;margin:0}
   .container{max-width:680px;margin:0 auto;padding:16px}
-  h1,h2{margin:0 0 12px 0}
+  h1,h2{margin:0 0 12px}
   .grid{display:grid;gap:12px}
   .card{padding:14px;border:1px solid #eee;border-radius:8px;text-decoration:none;display:block}
   .meta{font-size:12px;opacity:.7}
@@ -18,151 +18,107 @@
   .post .meta{font-size:12px;opacity:.7;margin-bottom:6px}
   .post .body{line-height:1.7;word-break:break-word;white-space:pre-wrap}
   .btn{display:inline-block;padding:10px 14px;border:1px solid #ddd;border-radius:6px;cursor:pointer}
-  .input, textarea{width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;box-sizing:border-box}
-  .empty{padding:24px;text-align:center;color:#999;border:1px dashed #ddd;border-radius:8px}
   nav{padding:10px 16px;border-bottom:1px solid #eee;position:sticky;top:0;background:#fff}
   nav a{text-decoration:none;margin-right:12px}
-  #err{display:none;background:#fff3cd;color:#856404;border:1px solid #ffeeba;padding:10px;margin:10px 16px;border-radius:6px}
 </style>
 </head>
 <body>
 <nav>
-  <a href="#/">人生会議</a>
-  <a id="navBack" href="javascript:void(0)">戻る</a>
-  <button id="forceStart" class="btn" style="margin-left:8px">Start</button>
+  <a href="#" onclick="startApp()">人生会議</a>
+  <a href="javascript:history.back()">戻る</a>
+  <button class="btn" onclick="startApp()">Start</button>
 </nav>
-<div id="err"></div>
 <div id="app" class="container"></div>
 
 <script>
-(function(){
-  function showError(e){
-    var box = document.getElementById('err');
-    box.style.display = 'block';
-    box.textContent = 'エラー: ' + (e && (e.message || e.toString()));
-    console.error(e);
-  }
-  function parseHash(){
-    var h = location.hash ? location.hash.slice(1) : '/';
-    var parts = h.split('?');
-    var path = parts[0] || '/';
-    var params = new URLSearchParams(parts[1] || '');
-    return { path: path, params: params };
-  }
-  function fmt(d){ return new Date(d).toLocaleString(); }
-  function esc(s){ return (s||'').replace(/[&<>"']/g, function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\\'':'&#39;'}[m]}); }
-  function rid(){ return Math.random().toString(36).slice(2,8).toUpperCase(); }
-  var THREAD_TITLES = { t1:'27歳、仕事やめたい', t2:'28歳の貯金額どれくらい？', t3:'29歳、結婚の現実を語る' };
-  var THREADS = [
-    {id:'t1', age:'27-29', title:THREAD_TITLES.t1, replies:42, updated_at:'2025-10-26T12:03:00Z'},
-    {id:'t2', age:'27-29', title:THREAD_TITLES.t2, replies:21, updated_at:'2025-10-26T09:41:00Z'},
-    {id:'t3', age:'27-29', title:THREAD_TITLES.t3, replies:88, updated_at:'2025-10-25T23:10:00Z'}
+  // 最低限のユーティリティ
+  function esc(s){return String(s||'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));}
+  function fmt(d){return new Date(d).toLocaleString();}
+  function rid(){return Math.random().toString(36).slice(2,8).toUpperCase();}
+
+  // データ（あとでAPIに置換可能）
+  const TITLES = { t1:"27歳、仕事やめたい", t2:"28歳の貯金額どれくらい？", t3:"29歳、結婚の現実を語る" };
+  const THREADS = [
+    {id:"t1", age:"27-29", title:TITLES.t1, replies:42, updated_at:"2025-10-26T12:03:00Z"},
+    {id:"t2", age:"27-29", title:TITLES.t2, replies:21, updated_at:"2025-10-26T09:41:00Z"},
+    {id:"t3", age:"27-29", title:TITLES.t3, replies:88, updated_at:"2025-10-25T23:10:00Z"}
   ];
-  function keyOf(tid){ return 'jk_posts_' + tid; }
+  function key(tid){ return "jk_posts_"+tid; }
   function loadPosts(tid){
-    var k = keyOf(tid);
+    const k = key(tid);
     if(!localStorage.getItem(k)){
-      var seed = [
-        {body:'正直つらい。転職って現実的？', anon_id:'A7XG3F', created_at:'2025-10-26T11:55:00Z'},
-        {body:'同じく。まずは副業で収入源作るのが良かった。', anon_id:'9KP2QD', created_at:'2025-10-26T12:10:00Z'}
-      ];
-      localStorage.setItem(k, JSON.stringify(seed));
+      localStorage.setItem(k, JSON.stringify([
+        {body:"正直つらい。転職って現実的？", anon_id:"A7XG3F", created_at:"2025-10-26T11:55:00Z"},
+        {body:"同じく。まずは副業で収入源作るのが良かった。", anon_id:"9KP2QD", created_at:"2025-10-26T12:10:00Z"}
+      ]));
     }
-    try{ return JSON.parse(localStorage.getItem(k) || '[]'); }catch(_){ return []; }
+    try { return JSON.parse(localStorage.getItem(k)||"[]"); } catch(e){ return []; }
   }
   function savePost(tid, post){
-    var k = keyOf(tid);
-    var arr = loadPosts(tid);
-    arr.push(post);
+    const k = key(tid); const arr = loadPosts(tid); arr.push(post);
     localStorage.setItem(k, JSON.stringify(arr));
   }
-  function viewTop(){
-    return '<h1>人生会議</h1>' +
-      '<p class="meta">年齢別に本音で語る匿名板。まずは年代を選んでね。</p>' +
-      '<div class="grid">' +
-      '<a class="card" href="#/list?age=27-29"><b>27–29歳</b><div class="meta">同世代の悩み・仕事・恋愛</div></a>' +
-      '</div>';
+
+  // 画面
+  function ViewTop(){
+    return `
+      <h1>人生会議</h1>
+      <p class="meta">年齢別に本音で語る匿名板。まずは年代を選んでね。</p>
+      <div class="grid">
+        <a class="card" href="#" onclick="showList('27-29')">
+          <b>27–29歳</b><div class="meta">同世代の悩み・仕事・恋愛</div>
+        </a>
+      </div>`;
   }
-  function viewList(age){
-    var list = THREADS.filter(function(t){ return t.age===age; });
-    var items = list.map(function(t){
-      return '<a class="thread" href="#/thread?t='+t.id+'">' +
-             '<div class="title">'+t.title+'</div>' +
-             '<div class="meta">'+t.replies+'件｜最終更新 '+fmt(t.updated_at)+'</div>' +
-             '</a>';
-    }).join('');
-    return '<h2>'+age+' のスレッド</h2>' +
-           '<div>' + (items || '<div class="empty">まだスレがありません</div>') + '</div>' +
-           '<div style="margin-top:16px"><a class="btn" href="#/">← 年代を選び直す</a></div>';
+  function ViewList(age){
+    const items = THREADS.filter(t=>t.age===age).map(t=>`
+      <a class="thread" href="#" onclick="showThread('${t.id}')">
+        <div class="title">${esc(t.title)}</div>
+        <div class="meta">${t.replies}件｜最終更新 ${fmt(t.updated_at)}</div>
+      </a>`).join("");
+    return `
+      <h2>${age} のスレッド</h2>
+      <div>${items || `<div class="meta">まだスレがありません</div>`}</div>
+      <div style="margin-top:16px"><a class="btn" href="#" onclick="startApp()">← 年代を選び直す</a></div>`;
   }
-  function viewThread(tid){
-    var title = THREAD_TITLES[tid] || 'スレッド';
-    var arr = loadPosts(tid);
-    var postsHtml = arr.length ? arr.map(function(p){
-      return '<div class="post">' +
-               '<div class="meta">ID:'+p.anon_id+'｜'+fmt(p.created_at)+'</div>' +
-               '<div class="body">'+esc(p.body)+'</div>' +
-             '</div>';
-    }).join('') : '<div class="empty">まだ投稿がありません</div>';
-    return '<a class="btn" href="javascript:history.back()">← 戻る</a>' +
-           '<h2>'+title+'</h2>' +
-           '<div id="posts">'+postsHtml+'</div>' +
-           '<div style="margin-top:16px">' +
-             '<h3>投稿する</h3>' +
-             '<textarea id="body" class="input" rows="4" placeholder="本文（例：正直つらい。転職って現実的？）"></textarea>' +
-             '<div style="margin-top:8px;display:flex;gap:8px;align-items:center">' +
-               '<button id="submit" class="btn">送信</button>' +
-               '<span id="status" class="meta"></span>' +
-             '</div>' +
-           '</div>';
+  function ViewThread(tid){
+    const title = TITLES[tid] || "スレッド";
+    const arr = loadPosts(tid);
+    const postsHtml = arr.map(p=>`
+      <div class="post">
+        <div class="meta">ID:${p.anon_id}｜${fmt(p.created_at)}</div>
+        <div class="body">${esc(p.body)}</div>
+      </div>`).join("");
+    return `
+      <a class="btn" href="#" onclick="history.back()">← 戻る</a>
+      <h2>${esc(title)}</h2>
+      <div id="posts">${postsHtml || `<div class="meta">まだ投稿がありません</div>`}</div>
+      <div style="margin-top:16px">
+        <h3>投稿する</h3>
+        <textarea id="body" class="input" rows="4" placeholder="本文（例：正直つらい。転職って現実的？）"></textarea>
+        <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+          <button class="btn" onclick="submitPost('${tid}')">送信</button>
+          <span id="status" class="meta"></span>
+        </div>
+      </div>`;
   }
-  function render(){
-    try{
-      var app = document.getElementById('app');
-      if(!app){ return; }
-      var h = parseHash();
-      if(h.path === '/list'){
-        var age = h.params.get('age') || '27-29';
-        app.innerHTML = viewList(age);
-      }else if(h.path === '/thread'){
-        var tid = h.params.get('t') || 't1';
-        app.innerHTML = viewThread(tid);
-        var btn = document.getElementById('submit');
-        if(btn){
-          btn.addEventListener('click', function(){
-            var textarea = document.getElementById('body');
-            var text = (textarea && textarea.value || '').trim();
-            var status = document.getElementById('status');
-            if(!text){ if(status) status.textContent='本文を入力してください'; return; }
-            var post = { body:text, anon_id: rid(), created_at: new Date().toISOString() };
-            savePost(tid, post);
-            if(textarea) textarea.value='';
-            if(status) status.textContent='投稿しました（ローカル保存）';
-            var arr = loadPosts(tid);
-            var html = arr.map(function(p){
-              return '<div class="post"><div class="meta">ID:'+p.anon_id+'｜'+fmt(p.created_at)+'</div><div class="body">'+esc(p.body)+'</div></div>';
-            }).join('');
-            var postsEl = document.getElementById('posts');
-            if(postsEl) postsEl.innerHTML = html;
-          });
-        }
-      }else{
-        app.innerHTML = viewTop();
-      }
-    }catch(e){ showError(e); }
+
+  // コントローラ
+  function mount(html){ document.getElementById("app").innerHTML = html; }
+  window.startApp = function(){ mount(ViewTop()); }
+  window.showList = function(age){ mount(ViewList(age)); }
+  window.showThread = function(tid){ mount(ViewThread(tid)); }
+  window.submitPost = function(tid){
+    const ta = document.getElementById("body"); const status = document.getElementById("status");
+    const text = (ta && ta.value || "").trim();
+    if(!text){ if(status) status.textContent = "本文を入力してください"; return; }
+    savePost(tid, { body:text, anon_id:rid(), created_at:new Date().toISOString() });
+    if(ta) ta.value = ""; if(status) status.textContent = "投稿しました（ローカル保存）";
+    showThread(tid);
   }
-  document.addEventListener('DOMContentLoaded', function(){
-    try{
-      var back = document.getElementById('navBack');
-      if(back){ back.addEventListener('click', function(){ history.back(); }); }
-      var start = document.getElementById('forceStart');
-      if(start){ start.addEventListener('click', function(){ location.hash = '#/'; render(); }); }
-      window.addEventListener('hashchange', render);
-      if(!location.hash){ location.hash = '#/'; }
-      render();
-    }catch(e){ showError(e); }
-  });
-})();
+
+  // 初期表示
+  startApp();
 </script>
 </body>
 </html>
