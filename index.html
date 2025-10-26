@@ -156,6 +156,11 @@ function ViewList(age){
   `;
 }
 
+function normalizeLeading(s){
+  // 各行の先頭にある半角/全角スペースを除去
+  return String(s||"").replace(/^[\s\u3000]+/gm, "");
+}
+
 function ViewThread(tid, age){
   const list = loadThreads(age);
   const found = list.find(t=>t.id===tid);
@@ -175,25 +180,24 @@ function ViewThread(tid, age){
   `).join("");
 
   const topicHtml = topic ? `
-    <div class="post">
-      <div class="meta">ID:${topic.anon_id}｜${fmt(topic.created_at)}</div>
-      <div class="body">
-        <div style="font-weight:600;margin-bottom:6px">${esc(title)}</div>
-        ${esc(topic.body)}
-      </div>
-      <div style="margin-top:8px">
-        <button class="btn" onclick="toggleReply('${topic.pid}')">返信する</button>
-      </div>
-      <div id="replyBox_${topic.pid}" style="display:none;margin-top:8px">
-        <textarea id="replyBody_${topic.pid}" class="input" rows="3" placeholder="返信内容"></textarea>
-        <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
-          <button class="btn" onclick="submitReply('${tid}','${age}','${topic.pid}')">返信を送信</button>
-          <span id="replyStatus_${topic.pid}" class="meta"></span>
-        </div>
-      </div>
-      ${repliesHtml || ""}
+  <div class="post">
+    <div class="meta">ID:${topic.anon_id}｜${fmt(topic.created_at)}</div>
+    <div class="body">
+      ${esc(normalizeLeading(topic.body))}
     </div>
-  ` : `<div class="meta">議題が見つかりません</div>`;
+    <div style="margin-top:8px">
+      <button class="btn" onclick="toggleReply('${topic.pid}')">返信する</button>
+    </div>
+    <div id="replyBox_${topic.pid}" style="display:none;margin-top:8px">
+      <textarea id="replyBody_${topic.pid}" class="input" rows="3" placeholder="返信内容"></textarea>
+      <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
+        <button class="btn" onclick="submitReply('${tid}','${age}','${topic.pid}')">返信を送信</button>
+        <span id="replyStatus_${topic.pid}" class="meta"></span>
+      </div>
+    </div>
+    ${repliesHtml || ""}
+  </div>
+` : `<div class="meta">議題が見つかりません</div>`;
 
   return `
     <a class="btn" href="#" onclick="showList('${age}')">← 一覧に戻る</a>
