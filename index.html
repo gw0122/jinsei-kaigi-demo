@@ -3,137 +3,167 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>人生会議（デモ v3）</title>
+<title>人生会議（マルチ部屋デモ）</title>
 <style>
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic',sans-serif;margin:0}
-  .container{max-width:680px;margin:0 auto;padding:16px}
-  h1,h2{margin:0 0 12px}
+  :root{--fg:#111;--muted:#6b7280;--bd:#e5e7eb;--bg:#fff}
+  html,body{height:100%}
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,'Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic',sans-serif;margin:0;color:var(--fg);background:var(--bg)}
+  .container{max-width:720px;margin:0 auto;padding:16px}
+  h1{font-size:28px;margin:0 0 6px}
+  h2{font-size:20px;margin:0 0 10px}
+  h3{font-size:16px;margin:0 0 6px}
+  .meta{font-size:12px;color:var(--muted)}
   .grid{display:grid;gap:12px}
-  .card{padding:14px;border:1px solid #eee;border-radius:8px;text-decoration:none;display:block}
-  .meta{font-size:12px;opacity:.7}
-  .thread{display:block;padding:12px 0;border-bottom:1px solid #f1f1f1;text-decoration:none}
+  .card{padding:14px;border:1px solid var(--bd);border-radius:10px;text-decoration:none;display:block}
+  .thread{display:block;padding:12px 0;border-bottom:1px solid var(--bd);text-decoration:none}
   .thread .title{font-weight:600}
-  .thread .meta{font-size:12px;opacity:.7;margin-top:4px}
-  .post{padding:12px 0;border-bottom:1px solid #f1f1f1}
-  .post .meta{font-size:12px;opacity:.7;margin-bottom:6px}
+  .thread .meta{font-size:12px;color:var(--muted);margin-top:4px}
+  .post{padding:12px 0;border-bottom:1px solid var(--bd)}
+  .post .meta{font-size:12px;color:var(--muted);margin-bottom:6px}
   .post .body{line-height:1.7;word-break:break-word;white-space:pre-wrap}
-  .btn{display:inline-block;padding:10px 14px;border:1px solid #ddd;border-radius:6px;cursor:pointer}
-  nav{padding:10px 16px;border-bottom:1px solid #eee;position:sticky;top:0;background:#fff}
+  .btn{display:inline-block;padding:9px 13px;border:1px solid var(--bd);border-radius:8px;background:#fff;cursor:pointer}
+  .input, textarea{width:100%;padding:10px;border:1px solid var(--bd);border-radius:8px;box-sizing:border-box}
+  nav{padding:10px 16px;border-bottom:1px solid var(--bd);position:sticky;top:0;background:#fff}
   nav a{text-decoration:none;margin-right:12px}
+  .spacer{height:4px}
 </style>
 </head>
 <body>
 <nav>
   <a href="#" onclick="startApp()">人生会議</a>
   <a href="javascript:history.back()">戻る</a>
-  <button class="btn" onclick="startApp()">Start</button>
 </nav>
 <div id="app" class="container"></div>
 
 <script>
-  // 最低限のユーティリティ
-  function esc(s){return String(s||'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));}
-  function fmt(d){return new Date(d).toLocaleString();}
-  function rid(){return Math.random().toString(36).slice(2,8).toUpperCase();}
+function esc(s){return String(s||'').replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;","&gt;":"&gt;","\"":"&quot;","'":"&#39;"}[m]));}
+function fmt(d){return new Date(d).toLocaleString();}
+function rid(){return Math.random().toString(36).slice(2,8).toUpperCase();}
 
-  // データ（あとでAPIに置換可能）
-  const TITLES = { t1:"27歳、仕事やめたい", t2:"28歳の貯金額どれくらい？", t3:"29歳、結婚の現実を語る" };
-  const THREADS = [
-    {id:"t1", age:"27-29", title:TITLES.t1, replies:42, updated_at:"2025-10-26T12:03:00Z"},
-    {id:"t2", age:"27-29", title:TITLES.t2, replies:21, updated_at:"2025-10-26T09:41:00Z"},
-    {id:"t3", age:"27-29", title:TITLES.t3, replies:88, updated_at:"2025-10-25T23:10:00Z"}
-  ];
-  function key(tid){ return "jk_posts_"+tid; }
-  function loadPosts(tid){
-    const k = key(tid);
-    if(!localStorage.getItem(k)){
-      localStorage.setItem(k, JSON.stringify([
-        {body:"正直つらい。転職って現実的？", anon_id:"A7XG3F", created_at:"2025-10-26T11:55:00Z"},
-        {body:"同じく。まずは副業で収入源作るのが良かった。", anon_id:"9KP2QD", created_at:"2025-10-26T12:10:00Z"}
-      ]));
-    }
-    try { return JSON.parse(localStorage.getItem(k)||"[]"); } catch(e){ return []; }
+function threadsKey(age){ return "jk_threads_" + age; }
+function loadThreads(age){
+  const k = threadsKey(age);
+  if(!localStorage.getItem(k)){
+    const seed = {
+      "27":[{id:"t27_1", age:"27", title:"27歳の転職リアル", replies:12, updated_at:"2025-10-26T12:00:00Z"}],
+      "28":[{id:"t28_1", age:"28", title:"28歳の貯金額どう？", replies:21, updated_at:"2025-10-26T09:30:00Z"}],
+      "29":[{id:"t29_1", age:"29", title:"29歳、結婚観語ろう", replies:8,  updated_at:"2025-10-25T22:10:00Z"}],
+      "30":[{id:"t30_1", age:"30", title:"30歳のキャリア再設計", replies:5,  updated_at:"2025-10-24T18:00:00Z"}]
+    };
+    localStorage.setItem(k, JSON.stringify(seed[age]||[]));
   }
-  function savePost(tid, post){
-    const k = key(tid); const arr = loadPosts(tid); arr.push(post);
-    localStorage.setItem(k, JSON.stringify(arr));
-  }
+  try { return JSON.parse(localStorage.getItem(k) || "[]"); } catch(e){ return []; }
+}
+function saveThreads(age, arr){ localStorage.setItem(threadsKey(age), JSON.stringify(arr)); }
 
-  // 画面
-  function ViewTop(){
-    return `
-      <h1>人生会議</h1>
-      <p class="meta">年齢別に本音で語る匿名板。まずは年代を選んでね。</p>
-      <div class="grid">
-        <a class="card" href="#" onclick="showList('27-29')">
-          <b>30歳の部屋</b>
-        </a>
+function postsKey(tid){ return "jk_posts_" + tid; }
+function loadPosts(tid){
+  const k = postsKey(tid);
+  if(!localStorage.getItem(k)){
+    localStorage.setItem(k, JSON.stringify([
+      {body:"正直つらい。転職って現実的？", anon_id:"A7XG3F", created_at:"2025-10-26T11:55:00Z"},
+      {body:"同じく。まずは副業から始めた。", anon_id:"9KP2QD", created_at:"2025-10-26T12:10:00Z"}
+    ]));
+  }
+  try { return JSON.parse(localStorage.getItem(k)||"[]"); } catch(e){ return []; }
+}
+function savePost(tid, post){
+  const k = postsKey(tid); const arr = loadPosts(tid);
+  arr.push(post); localStorage.setItem(k, JSON.stringify(arr));
+}
+
+function ViewTop(){
+  return `
+    <h1>人生会議</h1>
+    <p class="meta">年齢別に本音で語る匿名板。まずは年代を選んでね。</p>
+    <div class="grid"><a class="card" href="#" onclick="showList('30')"><b>30歳の部屋</b></a></div>
+    <div class="grid"><a class="card" href="#" onclick="showList('29')"><b>29歳の部屋</b></a></div>
+    <div class="grid"><a class="card" href="#" onclick="showList('28')"><b>28歳の部屋</b></a></div>
+    <div class="grid"><a class="card" href="#" onclick="showList('27')"><b>27歳の部屋</b></a></div>
+  `;
+}
+
+function ViewList(age){
+  const list = loadThreads(age);
+  const items = list.map(t=>`
+    <a class="thread" href="#" onclick="showThread('${t.id}','${age}')">
+      <div class="title">${t.title}</div>
+      <div class="meta">${t.replies||0}件｜最終更新 ${fmt(t.updated_at||new Date().toISOString())}</div>
+    </a>
+  `).join("");
+  const createUI = `
+    <div class="spacer"></div>
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb">
+      <h3>新規スレ作成</h3>
+      <input id="newTitle" class="input" placeholder="スレタイトル（例：${age}歳の転職どうしてる？）" />
+      <div style="margin-top:8px">
+        <button class="btn" onclick="createThread('${age}')">作成する</button>
       </div>
-      <div class="grid">
-        <a class="card" href="#" onclick="showList('27-29')">
-          <b>29歳の部屋</b>
-        </a>
-      </div>
-      <div class="grid">
-        <a class="card" href="#" onclick="showList('27-29')">
-          <b>28歳の部屋</b>
-        </a>
-      </div>
-      <div class="grid">
-        <a class="card" href="#" onclick="showList('27-29')">
-          <b>27歳の部屋</b>
-        </a>
-      </div>`;
-  }
-  function ViewList(age){
-    const items = THREADS.filter(t=>t.age===age).map(t=>`
-      <a class="thread" href="#" onclick="showThread('${t.id}')">
-        <div class="title">${esc(t.title)}</div>
-        <div class="meta">${t.replies}件｜最終更新 ${fmt(t.updated_at)}</div>
-      </a>`).join("");
-    return `
-      <h2>${age} のスレッド</h2>
-      <div>${items || `<div class="meta">まだスレがありません</div>`}</div>
-      <div style="margin-top:16px"><a class="btn" href="#" onclick="startApp()">← 年代を選び直す</a></div>`;
-  }
-  function ViewThread(tid){
-    const title = TITLES[tid] || "スレッド";
-    const arr = loadPosts(tid);
-    const postsHtml = arr.map(p=>`
-      <div class="post">
-        <div class="meta">ID:${p.anon_id}｜${fmt(p.created_at)}</div>
-        <div class="body">${esc(p.body)}</div>
-      </div>`).join("");
-    return `
-      <a class="btn" href="#" onclick="history.back()">← 戻る</a>
-      <h2>${esc(title)}</h2>
-      <div id="posts">${postsHtml || `<div class="meta">まだ投稿がありません</div>`}</div>
-      <div style="margin-top:16px">
-        <h3>投稿する</h3>
-        <textarea id="body" class="input" rows="4" placeholder="本文（例：正直つらい。転職って現実的？）"></textarea>
-        <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
-          <button class="btn" onclick="submitPost('${tid}')">送信</button>
-          <span id="status" class="meta"></span>
-        </div>
-      </div>`;
-  }
+    </div>`;
+  return `
+    <h2>${age}歳 のスレッド</h2>
+    <div>${items || `<div class="meta">まだスレがありません</div>`}</div>
+    ${createUI}
+    <div style="margin-top:16px"><a class="btn" href="#" onclick="startApp()">← 年代を選び直す</a></div>
+  `;
+}
 
-  // コントローラ
-  function mount(html){ document.getElementById("app").innerHTML = html; }
-  window.startApp = function(){ mount(ViewTop()); }
-  window.showList = function(age){ mount(ViewList(age)); }
-  window.showThread = function(tid){ mount(ViewThread(tid)); }
-  window.submitPost = function(tid){
-    const ta = document.getElementById("body"); const status = document.getElementById("status");
-    const text = (ta && ta.value || "").trim();
-    if(!text){ if(status) status.textContent = "本文を入力してください"; return; }
-    savePost(tid, { body:text, anon_id:rid(), created_at:new Date().toISOString() });
-    if(ta) ta.value = ""; if(status) status.textContent = "投稿しました（ローカル保存）";
-    showThread(tid);
-  }
+function ViewThread(tid, age){
+  const list = loadThreads(age);
+  const found = list.find(t=>t.id===tid);
+  const title = found ? found.title : "スレッド";
 
-  // 初期表示
-  startApp();
+  const arr = loadPosts(tid);
+  const postsHtml = arr.map(p=>`
+    <div class="post">
+      <div class="meta">ID:${p.anon_id}｜${fmt(p.created_at)}</div>
+      <div class="body">${p.body}</div>
+    </div>`).join("");
+
+  return `
+    <a class="btn" href="#" onclick="showList('${age}')">← 一覧に戻る</a>
+    <h2>${title}</h2>
+    <div id="posts">${postsHtml || `<div class="meta">まだ投稿がありません</div>`}</div>
+    <div style="margin-top:16px">
+      <h3>投稿する</h3>
+      <textarea id="body" class="input" rows="4" placeholder="本文（例：正直つらい。転職って現実的？）"></textarea>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+        <button class="btn" onclick="submitPost('${tid}','${age}')">送信</button>
+        <span id="status" class="meta"></span>
+      </div>
+    </div>`;
+}
+
+function mount(html){ document.getElementById("app").innerHTML = html; }
+function startApp(){ mount(ViewTop()); }
+function showList(age){ mount(ViewList(age)); }
+function showThread(tid, age){ mount(ViewThread(tid, age)); }
+function createThread(age){
+  const input = document.getElementById("newTitle");
+  const title = (input && input.value.trim()) || "";
+  if(!title){ alert("スレタイトルを入力してください"); return; }
+  const arr = loadThreads(age);
+  const id = `t${age}_` + Date.now();
+  arr.unshift({ id, age, title, replies:0, updated_at:new Date().toISOString() });
+  saveThreads(age, arr);
+  if(input) input.value = "";
+  showList(age);
+}
+function submitPost(tid, age){
+  const ta = document.getElementById("body"); const status = document.getElementById("status");
+  const text = (ta && ta.value || "").trim();
+  if(!text){ if(status) status.textContent="本文を入力してください"; return; }
+  savePost(tid, { body:text, anon_id:rid(), created_at:new Date().toISOString() });
+
+  const arr = loadThreads(age);
+  const i = arr.findIndex(t=>t.id===tid);
+  if(i>=0){ arr[i].replies = (arr[i].replies||0)+1; arr[i].updated_at = new Date().toISOString(); saveThreads(age, arr); }
+
+  if(ta) ta.value=""; if(status) status.textContent="投稿しました（ローカル保存）";
+  showThread(tid, age);
+}
+
+startApp();
 </script>
 </body>
 </html>
