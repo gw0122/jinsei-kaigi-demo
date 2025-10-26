@@ -100,23 +100,27 @@ function ViewTop(){
 function ViewList(age){
   const list = loadThreads(age);
   const items = list.map(t=>`
-    <a class="thread" href="#" onclick="showThread('${t.id}','${age}')">
-      <div class="title">${esc(t.title)}</div>
-      <div class="meta">${t.replies||0}件｜最終更新 ${fmt(t.updated_at||new Date().toISOString())}</div>
-    </a>
+    <div class="card thread-card" onclick="showThread('${t.id}','${age}')">
+      <div class="thread-title">${esc(t.title)}</div>
+      <div class="thread-meta">${t.replies||0}件｜最終更新 ${fmt(t.updated_at||new Date().toISOString())}</div>
+    </div>
   `).join("");
+
   const createUI = `
     <div class="spacer"></div>
-    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb">
+    <div style="margin-top:20px;padding-top:20px;border-top:1px solid #e5e7eb">
       <h3>新規スレ作成</h3>
       <input id="newTitle" class="input" placeholder="スレタイトル（例：${age}歳の転職どうしてる？）" />
       <div style="margin-top:8px">
         <button class="btn" onclick="createThread('${age}')">作成する</button>
       </div>
     </div>`;
+
   return `
     <h2>${age}歳 のスレッド</h2>
-    <div>${items || `<div class="meta">まだスレがありません</div>`}</div>
+    <div class="thread-grid">
+      ${items || `<div class="meta">まだスレがありません</div>`}
+    </div>
     ${createUI}
     <div style="margin-top:16px"><a class="btn" href="#" onclick="startApp()">← 年代を選び直す</a></div>
   `;
