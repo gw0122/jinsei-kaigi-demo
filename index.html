@@ -67,7 +67,35 @@ function esc(s){
   }[m]));
 }
 function fmt(d){return new Date(d).toLocaleString();}
-function rid(){return Math.random().toString(36).slice(2,8).toUpperCase();}
+
+// JST基準で日付を返す
+function ymdJST(d=new Date()){
+  const f = new Intl.DateTimeFormat('ja-JP', {
+    timeZone:'Asia/Tokyo',
+    year:'numeric',
+    month:'2-digit',
+    day:'2-digit'
+  });
+  const [{value:y},,{value:m},,{value:dd}] = f.formatToParts(d);
+  return `${y}-${m}-${dd}`; // 例: 2025-10-27
+}
+
+// 年代ごと・日ごとに同じID（5ch風）
+function getDailyAnonId(scope){ // 例: scope = "age_30"
+  const today = ymdJST();
+  const k = `jk_daily_anon_${scope}`;
+  try{
+    const rec = JSON.parse(localStorage.getItem(k) || "null");
+    if(rec && rec.date === today && rec.id){
+      return rec.id;
+    }
+    const id = Math.random().toString(36).slice(2,8).toUpperCase();
+    localStorage.setItem(k, JSON.stringify({date: today, id}));
+    return id;
+  }catch(_){
+    return Math.random().toString(36).slice(2,8).toUpperCase();
+  }
+}
 
 // ===== Threads (by age) in localStorage =====
 function threadsKey(age){ return "jk_threads_" + age; }
@@ -82,7 +110,7 @@ function loadThreads(age){
     };
     const arr = seed[age] || [];
     localStorage.setItem(k, JSON.stringify(arr));
-    // それぞれに議題ポストを最低1つ作っておく
+    // 初期サンプル投稿
     arr.forEach(t=>{
       const pk = postsKey(t.id);
       if(!localStorage.getItem(pk)){
@@ -157,7 +185,6 @@ function ViewList(age){
 }
 
 function normalizeLeading(s){
-  // 各行の先頭にある半角/全角スペースを除去
   return String(s||"").replace(/^[\s\u3000]+/gm, "");
 }
 
@@ -167,7 +194,6 @@ function ViewThread(tid, age){
   const title = found ? found.title : "スレッド";
 
   const posts = loadPosts(tid);
-  // この形式では「議題ポスト（先頭・is_topic=true）」のみ表示し、その内容に返信していく
   const topic = posts.find(p=>p.is_topic) || posts[0];
 
   const repliesMap = loadReplies(tid);
@@ -203,7 +229,6 @@ function ViewThread(tid, age){
     <a class="btn" href="#" onclick="showList('${age}')">← 一覧に戻る</a>
     <h2>${esc(title)}</h2>
     ${topicHtml}
-    <!-- この形式では新規投稿フォーム（別トピ立て）は一覧画面にのみ存在。ここには置かない -->
   `;
 }
 
@@ -228,22 +253,20 @@ function createThread(age){
   const id = `t${age}_` + Date.now();
   const topicPid = "p"+Date.now().toString(36);
 
-  // スレ（議題）を作成
   arr.unshift({
     id, age, title, replies:0, updated_at:new Date().toISOString(), topic_pid: topicPid
   });
   saveThreads(age, arr);
 
-  // 議題ポストを作成（唯一のポスト）
   const post = {
     pid: topicPid,
     body: body,
-    anon_id: rid(),
+    anon_id: getDailyAnonId("age_"+age), 
     created_at: new Date().toISOString(),
     is_topic: true,
     title
   };
-  savePosts(id, [post]); // スレには最初から議題1件のみ
+  savePosts(id, [post]);
 
   if(titleEl) titleEl.value = "";
   if(bodyEl)  bodyEl.value  = "";
@@ -251,7 +274,7 @@ function createThread(age){
   showList(age);
 }
 
-// replies
+// ===== Replies =====
 function toggleReply(pid){
   const box = document.getElementById("replyBox_"+pid);
   if(!box) return;
@@ -265,15 +288,19 @@ function submitReply(tid, age, pid){
 
   const map = loadReplies(tid);
   if(!map[pid]) map[pid] = [];
-  map[pid].push({ body:text, anon_id:rid(), created_at:new Date().toISOString() });
-  saveReplies(tid, map);
+  map[pid].push({ body:text, anon_id:getDailyAnonId("age_"+age), created_at:new Date().toISOString() });
+  saveReplies(tid, map); // ← これが大事！
 
-  // スレの更新時刻と返信数
   const arr = loadThreads(age);
   const i = arr.findIndex(t=>t.id===tid);
-  if(i>=0){ arr[i].replies = (arr[i].replies||0)+1; arr[i].updated_at = new Date().toISOString(); saveThreads(age, arr); }
+  if(i>=0){
+    arr[i].replies = (arr[i].replies||0)+1;
+    arr[i].updated_at = new Date().toISOString();
+    saveThreads(age, arr);
+  }
 
-  if(ta) ta.value = ""; if(status) status.textContent = "返信を投稿しました";
+  if(ta) ta.value = "";
+  if(status) status.textContent = "返信を投稿しました";
   showThread(tid, age);
 }
 
