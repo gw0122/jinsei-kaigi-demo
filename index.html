@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>人生会議（部屋別・返信対応デモ）</title>
+<title>人生会議（議題＋返信形式デモ）</title>
 <style>
   :root{--fg:#111;--muted:#6b7280;--bd:#e5e7eb;--bg:#fff}
   html,body{height:100%}
@@ -28,7 +28,7 @@
   nav a{text-decoration:none;margin-right:12px}
   .spacer{height:4px}
 
-  /* ==== スレ一覧をカード風に ==== */
+  /* スレ一覧をカード風に */
   .thread-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -75,12 +75,22 @@ function loadThreads(age){
   const k = threadsKey(age);
   if(!localStorage.getItem(k)){
     const seed = {
-      "27":[{id:"t27_1", age:"27", title:"27歳の転職リアル", replies:12, updated_at:"2025-10-26T12:00:00Z"}],
-      "28":[{id:"t28_1", age:"28", title:"28歳の貯金額どう？", replies:21, updated_at:"2025-10-26T09:30:00Z"}],
-      "29":[{id:"t29_1", age:"29", title:"29歳、結婚観語ろう", replies:8,  updated_at:"2025-10-25T22:10:00Z"}],
-      "30":[{id:"t30_1", age:"30", title:"30歳のキャリア再設計", replies:5,  updated_at:"2025-10-24T18:00:00Z"}]
+      "27":[{id:"t27_1", age:"27", title:"27歳の転職リアル", replies:12, updated_at:"2025-10-26T12:00:00Z", topic_pid:"p_seed27"}],
+      "28":[{id:"t28_1", age:"28", title:"28歳の貯金額どう？", replies:21, updated_at:"2025-10-26T09:30:00Z", topic_pid:"p_seed28"}],
+      "29":[{id:"t29_1", age:"29", title:"29歳、結婚観語ろう", replies:8,  updated_at:"2025-10-25T22:10:00Z", topic_pid:"p_seed29"}],
+      "30":[{id:"t30_1", age:"30", title:"30歳のキャリア再設計", replies:5,  updated_at:"2025-10-24T18:00:00Z", topic_pid:"p_seed30"}]
     };
-    localStorage.setItem(k, JSON.stringify(seed[age]||[]));
+    const arr = seed[age] || [];
+    localStorage.setItem(k, JSON.stringify(arr));
+    // それぞれに議題ポストを最低1つ作っておく
+    arr.forEach(t=>{
+      const pk = postsKey(t.id);
+      if(!localStorage.getItem(pk)){
+        localStorage.setItem(pk, JSON.stringify([
+          {pid:t.topic_pid, body:"正直つらい。転職って現実的？", anon_id:"A7XG3F", created_at:"2025-10-26T11:55:00Z", is_topic:true, title:t.title}
+        ]));
+      }
+    });
   }
   try { return JSON.parse(localStorage.getItem(k) || "[]"); } catch(e){ return []; }
 }
@@ -90,20 +100,11 @@ function saveThreads(age, arr){ localStorage.setItem(threadsKey(age), JSON.strin
 function postsKey(tid){ return "jk_posts_" + tid; }
 function loadPosts(tid){
   const k = postsKey(tid);
-  if(!localStorage.getItem(k)){
-    localStorage.setItem(k, JSON.stringify([
-      {pid:"p1", body:"正直つらい。転職って現実的？", anon_id:"A7XG3F", created_at:"2025-10-26T11:55:00Z"},
-      {pid:"p2", body:"同じく。まずは副業から始めた。", anon_id:"9KP2QD", created_at:"2025-10-26T12:10:00Z"}
-    ]));
-  }
   try { return JSON.parse(localStorage.getItem(k)||"[]"); } catch(e){ return []; }
 }
-function savePost(tid, post){
-  const k = postsKey(tid); const arr = loadPosts(tid);
-  arr.push(post); localStorage.setItem(k, JSON.stringify(arr));
-}
+function savePosts(tid, arr){ localStorage.setItem(postsKey(tid), JSON.stringify(arr)); }
 
-// ===== Replies per post (stored as map per thread) =====
+// ===== Replies per post =====
 function repliesKey(tid){ return "jk_replies_" + tid; }
 function loadReplies(tid){
   try { return JSON.parse(localStorage.getItem(repliesKey(tid)) || "{}"); } catch(e){ return {}; }
@@ -136,10 +137,12 @@ function ViewList(age){
   const createUI = `
     <div class="spacer"></div>
     <div style="margin-top:20px;padding-top:20px;border-top:1px solid #e5e7eb">
-      <h3>新規スレ作成</h3>
-      <input id="newTitle" class="input" placeholder="スレタイトル（例：${age}歳の転職どうしてる？）" />
+      <h3>新規スレ作成（＝議題作成）</h3>
+      <input id="newTitle" class="input" placeholder="議題タイトル（例：${age}歳の結婚どうしてる？）" />
+      <textarea id="newBody" class="input" rows="4" style="margin-top:8px" placeholder="議題内容（例：30歳独身。良い出会いがなくて困ってます。皆さんはどうしてますか？）"></textarea>
       <div style="margin-top:8px">
         <button class="btn" onclick="createThread('${age}')">作成する</button>
+        <span id="createStatus" class="meta"></span>
       </div>
     </div>`;
 
@@ -159,49 +162,45 @@ function ViewThread(tid, age){
   const title = found ? found.title : "スレッド";
 
   const posts = loadPosts(tid);
-  const repliesMap = loadReplies(tid); // { pid: [ {body, anon_id, created_at}, ... ] }
+  // この形式では「議題ポスト（先頭・is_topic=true）」のみ表示し、その内容に返信していく
+  const topic = posts.find(p=>p.is_topic) || posts[0];
 
-  const postsHtml = posts.map(p=>{
-    const reps = repliesMap[p.pid] || [];
-    const repliesHtml = reps.map(r=>`
+  const repliesMap = loadReplies(tid);
+  const reps = (repliesMap[topic?.pid] || []);
+  const repliesHtml = reps.map(r=>`
       <div class="reply">
         <div class="meta">↳ 返信｜ID:${r.anon_id}｜${fmt(r.created_at)}</div>
         <div class="body">${esc(r.body)}</div>
       </div>
-    `).join("");
+  `).join("");
 
-    return `
-      <div class="post">
-        <div class="meta">ID:${p.anon_id}｜${fmt(p.created_at)}</div>
-        <div class="body">${esc(p.body)}</div>
-        <div style="margin-top:8px">
-          <button class="btn" onclick="toggleReply('${p.pid}')">返信する</button>
-        </div>
-        <div id="replyBox_${p.pid}" style="display:none;margin-top:8px">
-          <textarea id="replyBody_${p.pid}" class="input" rows="3" placeholder="返信内容"></textarea>
-          <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
-            <button class="btn" onclick="submitReply('${tid}','${age}','${p.pid}')">返信を送信</button>
-            <span id="replyStatus_${p.pid}" class="meta"></span>
-          </div>
-        </div>
-        ${repliesHtml}
+  const topicHtml = topic ? `
+    <div class="post">
+      <div class="meta">ID:${topic.anon_id}｜${fmt(topic.created_at)}</div>
+      <div class="body">
+        <div style="font-weight:600;margin-bottom:6px">${esc(title)}</div>
+        ${esc(topic.body)}
       </div>
-    `;
-  }).join("");
+      <div style="margin-top:8px">
+        <button class="btn" onclick="toggleReply('${topic.pid}')">返信する</button>
+      </div>
+      <div id="replyBox_${topic.pid}" style="display:none;margin-top:8px">
+        <textarea id="replyBody_${topic.pid}" class="input" rows="3" placeholder="返信内容"></textarea>
+        <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
+          <button class="btn" onclick="submitReply('${tid}','${age}','${topic.pid}')">返信を送信</button>
+          <span id="replyStatus_${topic.pid}" class="meta"></span>
+        </div>
+      </div>
+      ${repliesHtml || ""}
+    </div>
+  ` : `<div class="meta">議題が見つかりません</div>`;
 
   return `
     <a class="btn" href="#" onclick="showList('${age}')">← 一覧に戻る</a>
     <h2>${esc(title)}</h2>
-    <div id="posts">${postsHtml || `<div class="meta">まだ投稿がありません</div>`}</div>
-
-    <div style="margin-top:16px">
-      <h3>投稿する</h3>
-      <textarea id="body" class="input" rows="4" placeholder="本文（例：正直つらい。転職って現実的？）"></textarea>
-      <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
-        <button class="btn" onclick="submitPost('${tid}','${age}')">送信</button>
-        <span id="status" class="meta"></span>
-      </div>
-    </div>`;
+    ${topicHtml}
+    <!-- この形式では新規投稿フォーム（別トピ立て）は一覧画面にのみ存在。ここには置かない -->
+  `;
 }
 
 // ===== Controllers =====
@@ -209,30 +208,43 @@ function mount(html){ document.getElementById("app").innerHTML = html; }
 function startApp(){ mount(ViewTop()); }
 function showList(age){ mount(ViewList(age)); }
 function showThread(tid, age){ mount(ViewThread(tid, age)); }
+
 function createThread(age){
-  const input = document.getElementById("newTitle");
-  const title = (input && input.value.trim()) || "";
-  if(!title){ alert("スレタイトルを入力してください"); return; }
+  const titleEl = document.getElementById("newTitle");
+  const bodyEl  = document.getElementById("newBody");
+  const status  = document.getElementById("createStatus");
+
+  const title = (titleEl?.value || "").trim();
+  const body  = (bodyEl?.value  || "").trim();
+
+  if(!title){ status.textContent="タイトルを入力してください"; return; }
+  if(!body){  status.textContent="内容を入力してください"; return; }
+
   const arr = loadThreads(age);
   const id = `t${age}_` + Date.now();
-  arr.unshift({ id, age, title, replies:0, updated_at:new Date().toISOString() });
+  const topicPid = "p"+Date.now().toString(36);
+
+  // スレ（議題）を作成
+  arr.unshift({
+    id, age, title, replies:0, updated_at:new Date().toISOString(), topic_pid: topicPid
+  });
   saveThreads(age, arr);
-  if(input) input.value = "";
+
+  // 議題ポストを作成（唯一のポスト）
+  const post = {
+    pid: topicPid,
+    body: body,
+    anon_id: rid(),
+    created_at: new Date().toISOString(),
+    is_topic: true,
+    title
+  };
+  savePosts(id, [post]); // スレには最初から議題1件のみ
+
+  if(titleEl) titleEl.value = "";
+  if(bodyEl)  bodyEl.value  = "";
+  if(status)  status.textContent = "作成しました（ローカル保存）";
   showList(age);
-}
-function submitPost(tid, age){
-  const ta = document.getElementById("body"); const status = document.getElementById("status");
-  const text = (ta && ta.value || "").trim();
-  if(!text){ if(status) status.textContent="本文を入力してください"; return; }
-  const post = { pid:"p"+Date.now().toString(36), body:text, anon_id:rid(), created_at:new Date().toISOString() };
-  savePost(tid, post);
-
-  const arr = loadThreads(age);
-  const i = arr.findIndex(t=>t.id===tid);
-  if(i>=0){ arr[i].replies = (arr[i].replies||0)+1; arr[i].updated_at = new Date().toISOString(); saveThreads(age, arr); }
-
-  if(ta) ta.value=""; if(status) status.textContent="投稿しました（ローカル保存）";
-  showThread(tid, age);
 }
 
 // replies
@@ -251,6 +263,11 @@ function submitReply(tid, age, pid){
   if(!map[pid]) map[pid] = [];
   map[pid].push({ body:text, anon_id:rid(), created_at:new Date().toISOString() });
   saveReplies(tid, map);
+
+  // スレの更新時刻と返信数
+  const arr = loadThreads(age);
+  const i = arr.findIndex(t=>t.id===tid);
+  if(i>=0){ arr[i].replies = (arr[i].replies||0)+1; arr[i].updated_at = new Date().toISOString(); saveThreads(age, arr); }
 
   if(ta) ta.value = ""; if(status) status.textContent = "返信を投稿しました";
   showThread(tid, age);
